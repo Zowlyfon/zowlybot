@@ -352,6 +352,14 @@ main(int argc, char* argv[])
                 continue;
             }
 
+            if (bot_catch(buf, call_name, "mygit") == 0) {
+                out[0] = 0;
+                sprintf(out, 
+                "PRIVMSG %s :https://github.com/Zowlyfon/zowlybot\r\n");
+                bot_send(sockfd, out);
+                continue;
+            }
+
             if (strstr(buf, "Thailand") != NULL &&
                     strstr(buf, "PRIVMSG") != NULL) {
                 out[0] = 0;
