@@ -58,6 +58,7 @@ int bot_strlist (char* file, char*** list);
 int bot_fileapp (char* file, char* string);
 int bot_token   (char* del, char* string, char*** list);
 int bot_furl    (char* url, char** data);
+int bot_getpos  (char* buf, char** pos, char* callname, char* command);
 
 uint64_t is_prime(uint64_t number);
 
@@ -78,7 +79,7 @@ main(int argc, char* argv[])
     char bot_name[] = "zowlybot";
     char owner_name[] = "Zowlyfon";
     char owner_host[] = ":Zowlyfon!zowlyfon@user/zowlyfon";
-    char call_name[] = "zb-";
+    char call_name[] = ":zb-";
     char* channel = argv[3];
 
     char* nick_cmd = (char*)malloc(sizeof(char) * 
@@ -131,10 +132,12 @@ main(int argc, char* argv[])
 
     bot_connect(argv[1], port, &sockfd);
     bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
+    sleep(2);
     bot_join(sockfd, channels, nchannels);
 
     /* Program master loop */
     while (1) {
+        sleep(1);
         buf[0] = 0;
 
         if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1) {
@@ -156,6 +159,14 @@ main(int argc, char* argv[])
                 bot_send(sockfd, out);
                 continue;
             }
+ 
+            if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
+                close(sockfd);
+                bot_connect(argv[1], port, &sockfd);
+                bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
+                bot_join(sockfd, channels, nchannels);
+                continue;
+            }
 
             /* Tokenise the buffer */
 
@@ -170,6 +181,11 @@ main(int argc, char* argv[])
             strcpy(buf2, buf);
 
             nbuftok = bot_token(" @!", buf2, &buf_tok);
+
+            if (nbuftok < 5) {
+                continue;
+            }
+
             channel = buf_tok[4];
 
             if (strncmp(channel, bot_name, strlen(bot_name)) == 0) {
@@ -196,12 +212,12 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "die") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "die") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 break;
             }
 
-            if (bot_catch(buf, call_name, "say") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "say") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
@@ -214,7 +230,7 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "command") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "command") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
@@ -225,17 +241,14 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "join") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "join") == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("join") + 2;
-                sprintf(out, "JOIN %s\r\n", pos);
+                sprintf(out, "JOIN %s\r\n", buf_tok[6]);
                 bot_send(sockfd, out);
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "part") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "part") == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
@@ -245,7 +258,7 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "quit") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "quit") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
@@ -257,7 +270,7 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "newmeme") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "newmeme") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
@@ -279,79 +292,76 @@ main(int argc, char* argv[])
                 continue;
             }
             
-            if (bot_catch(buf, call_name, "ban") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "ban") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("ban") + 2;
                 
-                if (bot_fileapp("ban.txt", pos) == 0) {
-                    sprintf(out, "PRIVMSG %s :added: %s\r\n", channel, pos);
+                if (bot_fileapp("ban.txt", buf_tok[6]) == 0) {
+                    sprintf(out, "PRIVMSG %s :added: %s\r\n", 
+                        channel, buf_tok[6]);
                     for (i = 0; i < nbanned; i++) {
                         free(banned[i]);
                     }
                     free(banned);
                     nbanned = bot_strlist("ban.txt", &banned);
                 } else {
-                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", channel, pos);
+                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", 
+                        channel, buf_tok[6]);
                 }
 
                 bot_send(sockfd, out);
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "op") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "op") == 0 &&
                     strncmp(buf, owner_host, strlen(owner_host)) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("op") + 2;
                 
-                if (bot_fileapp("ops.txt", pos) == 0) {
-                    sprintf(out, "PRIVMSG %s :added: %s\r\n", channel, pos);
+                if (bot_fileapp("ops.txt", buf_tok[6]) == 0) {
+                    sprintf(out, "PRIVMSG %s :added: %s\r\n", 
+                        channel, buf_tok[6]);
                     for (i = 0; i < nops; i++) {
                         free(ops[i]);
                     }
                     free(ops);
                     nops = bot_strlist("ops.txt", &ops);
                 } else {
-                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", channel, pos);
+                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", 
+                        channel, buf_tok[6]);
                 }
 
                 bot_send(sockfd, out);
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "addchan") == 0 &&
+            if (bot_catch(buf_tok[5], call_name, "addchan") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) +
-                    strlen("addchan") + 2;
 
-                if (bot_fileapp("channels.txt", pos) == 0) {
-                    sprintf(out, "PRIVMSG %s :added: %s\r\n", channel, pos);
+                if (bot_fileapp("channels.txt", buf_tok[6]) == 0) {
+                    sprintf(out, "PRIVMSG %s :added: %s\r\n", 
+                        channel, buf_tok[6]);
                     for (i = 0; i < nchannels; i++) {
                         free(channels[i]);
                     }
                     free(channels);
                     nchannels = bot_strlist("channels.txt", &channels);
                 } else {
-                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", channel, pos);
+                    sprintf(out, "PRIVMSG %s :failed: %s\r\n", 
+                        channel, buf_tok[6]);
                 }
 
                 bot_send(sockfd, out);
             }
 
-            if (bot_catch(buf, call_name, "owner") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "owner") == 0) {
                 out[0] = 0;
                 sprintf(out, "PRIVMSG %s %s\r\n", channel, owner_name);
                 bot_send(sockfd, out);
                 continue;
             }
             
-            if (bot_catch(buf, call_name, "url") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "url") == 0) {
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
@@ -370,10 +380,11 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "mygit") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "mygit") == 0) {
                 out[0] = 0;
                 sprintf(out, 
-                "PRIVMSG %s :https://github.com/Zowlyfon/zowlybot\r\n");
+                "PRIVMSG %s :https://github.com/Zowlyfon/zowlybot\r\n",
+                channel);
                 bot_send(sockfd, out);
                 continue;
             }
@@ -387,12 +398,10 @@ main(int argc, char* argv[])
                 continue;
             }
             
-            if (bot_catch(buf, call_name, "primality") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "primality") == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("primality") + 2;
-                temp_llint = strtoull(pos, &endptr, 10);
+                
+                temp_llint = strtoull(buf_tok[6], &endptr, 10);
 
                 printf("temp_int: %d\n", temp_int);
 
@@ -408,12 +417,9 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "random") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "random") == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") +strlen(call_name) +
-                    strlen("random") + 2;
-                temp_int = atoi(pos);
+                temp_int = atoi(buf_tok[6]);
                 if (temp_int > 0) {
                     temp_int = rand() % (temp_int + 1);
                 }
@@ -422,14 +428,14 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "distro") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "distro") == 0) {
                 out[0] = 0;
                 sprintf(out, "PRIVMSG %s :%s\r\n", channel, "freeBSD");
                 bot_send(sockfd, out);
                 continue;
             }
             
-            if (bot_catch(buf, call_name, "memes") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "memes") == 0) {
                 temp_int = rand() % nmemes;
                 out[0] = 0;
                 sprintf(out, "PRIVMSG %s :%s\r\n", channel, memes[temp_int]);
@@ -437,7 +443,7 @@ main(int argc, char* argv[])
                 continue;
             }
 
-            if (bot_catch(buf, call_name, "interject") == 0) {
+            if (bot_catch(buf_tok[5], call_name, "interject") == 0) {
                 out[0] = 0;
                 sprintf(out,
                 "PRIVMSG %s :I'd just like to interject for a moment. What you're refering to as GNU/Linux, is in fact, Systemd/Linux, or as I've taken to calling it, Systemd plus Linux. GNU is not an operating system unto itself, but rather another free component of a fully functioning Systemd.\r\n",
@@ -584,18 +590,15 @@ bot_recv(int sockfd, char* buf)
 int
 bot_catch(char* buf, char* call, char* catch) 
 {
-    char* pos;
-    char* call_catch = (char*)malloc(sizeof(char) * (
-        strlen(call) + strlen(catch) + 2));
-    sprintf(call_catch, "%s%s", call, catch);
-    
-    if (strstr(buf, "PRIVMSG") != NULL) {
-        pos = strstr(buf, "PRIVMSG");
-        pos = strstr(pos, ":") + 1;
-        if (strncmp(pos, call_catch, strlen(call_catch)) == 0){
-            free(call_catch);
-            return 0;
-        }
+    char* call_catch = (char*)malloc(sizeof(char*) * (
+        strlen(call) + strlen(catch) + 1));
+    strncpy(call_catch, call, strlen(call));
+    strncat(call_catch, catch, strlen(catch));
+    call_catch[strlen(call) + strlen(catch)] = '\0';
+
+    if (strncmp(buf, call_catch, strlen(call_catch)) == 0) {
+        return 0;
+        free(call_catch);
     }
 
     free(call_catch);
@@ -726,6 +729,14 @@ bot_furl(char* url, char** data)
     curl_easy_cleanup(ch);
     free(chunk.memory);
     return chunk.size;
+}
+
+int
+bot_getpos(char* buf, char** pos, char* callname, char* command)
+{
+    *pos = strstr(buf, "PRIVMSG");
+    *pos = strstr(buf, ":") + strlen(callname) + strlen(command) + 2;
+    return 0;
 }
 
 static size_t
