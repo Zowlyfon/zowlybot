@@ -151,21 +151,25 @@ main(int argc, char* argv[])
 
             /* Check for a PING */
 
-            if (strncmp(buf, "PING", 4) == 0) {
-                out[0] = 0;
-                pos = strstr(buf, " ") + 1;
-                sprintf(out, "PONG %s\r\n", pos);
+            if (strlen(buf) > 3) {
+                if (strncmp(buf, "PING", 4) == 0) {
+                    out[0] = 0;
+                    pos = strstr(buf, " ") + 1;
+                    sprintf(out, "PONG %s\r\n", pos);
                 
-                bot_send(sockfd, out);
-                continue;
+                    bot_send(sockfd, out);
+                    continue;
+                }
             }
- 
-            if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
-                close(sockfd);
-                bot_connect(argv[1], port, &sockfd);
-                bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
-                bot_join(sockfd, channels, nchannels);
-                continue;
+
+            if (strlen(buf) > 19) {
+                if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
+                    close(sockfd);
+                    bot_connect(argv[1], port, &sockfd);
+                    bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
+                    bot_join(sockfd, channels, nchannels);
+                    continue;
+                }
             }
 
             /* Tokenise the buffer */
@@ -182,7 +186,7 @@ main(int argc, char* argv[])
 
             nbuftok = bot_token(" @!", buf2, &buf_tok);
 
-            if (nbuftok < 5) {
+            if (nbuftok < 6) {
                 continue;
             }
 
@@ -222,7 +226,7 @@ main(int argc, char* argv[])
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("say") + 2;
+                    strlen("say") + 1;
                 
                 sprintf(out, "PRIVMSG %s :%s\r\n", channel, pos);
 
@@ -235,13 +239,16 @@ main(int argc, char* argv[])
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) + 
-                    strlen("command") + 2;
+                    strlen("command") + 1;
                 sprintf(out, "%s\r\n", pos);
                 bot_send(sockfd, out);
                 continue;
             }
 
             if (bot_catch(buf_tok[5], call_name, "join") == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }
                 out[0] = 0;
                 sprintf(out, "JOIN %s\r\n", buf_tok[6]);
                 bot_send(sockfd, out);
@@ -250,9 +257,6 @@ main(int argc, char* argv[])
 
             if (bot_catch(buf_tok[5], call_name, "part") == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) +
-                    strlen("part") + 2;
                 sprintf(out, "PART %s\r\n", channel);
                 bot_send(sockfd, out);
                 continue;
@@ -261,11 +265,8 @@ main(int argc, char* argv[])
             if (bot_catch(buf_tok[5], call_name, "quit") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
-                pos = strstr(pos, ":") + strlen(call_name) + 
-                strlen("quit") + 2;
-
-                sprintf(out, "QUIT %s\r\n", pos);
+                
+                sprintf(out, "QUIT\r\n");
                 bot_send(sockfd, out);
                 continue;
             }
@@ -275,7 +276,7 @@ main(int argc, char* argv[])
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
-                strlen("newmeme") + 2;
+                strlen("newmeme") + 1;
                 
                 if (bot_fileapp("memes.txt", pos) == 0) {
                     sprintf(out, "PRIVMSG %s :added: %s\r\n", channel, pos);
@@ -294,6 +295,10 @@ main(int argc, char* argv[])
             
             if (bot_catch(buf_tok[5], call_name, "ban") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }
+                
                 out[0] = 0;
                 
                 if (bot_fileapp("ban.txt", buf_tok[6]) == 0) {
@@ -315,6 +320,10 @@ main(int argc, char* argv[])
 
             if (bot_catch(buf_tok[5], call_name, "op") == 0 &&
                     strncmp(buf, owner_host, strlen(owner_host)) == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }   
+
                 out[0] = 0;
                 
                 if (bot_fileapp("ops.txt", buf_tok[6]) == 0) {
@@ -336,6 +345,10 @@ main(int argc, char* argv[])
 
             if (bot_catch(buf_tok[5], call_name, "addchan") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }
+                
                 out[0] = 0;
 
                 if (bot_fileapp("channels.txt", buf_tok[6]) == 0) {
@@ -362,6 +375,10 @@ main(int argc, char* argv[])
             }
             
             if (bot_catch(buf_tok[5], call_name, "url") == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }
+                
                 out[0] = 0;
                 pos = strstr(buf, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
@@ -399,6 +416,10 @@ main(int argc, char* argv[])
             }
             
             if (bot_catch(buf_tok[5], call_name, "primality") == 0) {
+                if (nbuftok < 7) {
+
+                }
+
                 out[0] = 0;
                 
                 temp_llint = strtoull(buf_tok[6], &endptr, 10);
@@ -418,6 +439,10 @@ main(int argc, char* argv[])
             }
 
             if (bot_catch(buf_tok[5], call_name, "random") == 0) {
+                if (nbuftok < 7) {
+                    continue;
+                }
+                
                 out[0] = 0;
                 temp_int = atoi(buf_tok[6]);
                 if (temp_int > 0) {
