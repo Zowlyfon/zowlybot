@@ -54,6 +54,7 @@ int bot_send    (int sockfd, char *buf);
 int bot_recv    (int sockfd, char *buf);
 int bot_catch   (char* buf, char* call, char* catch);
 int bot_listcmp (char* item, char** list, int n);
+int bot_liststr (char* item, char** list, int n);
 int bot_strlist (char* file, char*** list);
 int bot_fileapp (char* file, char* string);
 int bot_token   (char* del, char* string, char*** list);
@@ -196,10 +197,15 @@ main(int argc, char* argv[])
                 channel = buf_tok[0] + 1;
             }
             
-            compare = (char*)malloc(sizeof(char) * (strlen(buf_tok[2]) + 1));
+            compare = (char*)malloc(sizeof(char) * (strlen(buf_tok[2]) + 3));
             sprintf(compare, "%s\r\n", buf_tok[2]);
 
             if (bot_listcmp(compare, banned, nbanned) == 0) {
+                printf("%s banned\n", buf_tok[2]);
+                continue;
+            }
+
+            if (bot_liststr(buf_tok[2], banned, nbanned) == 0) {
                 printf("%s banned\n", buf_tok[2]);
                 continue;
             }
@@ -643,6 +649,27 @@ bot_listcmp(char* item, char** list, int n)
     return 1;
 }
 
+int
+bot_liststr(char* item, char** list, int n)
+{
+    int i;
+    char* compare;
+    for (i = 0; i < n; i++) {
+        compare = (char*)malloc(sizeof(char) * (
+            strlen(list[i])));
+        
+        strncpy(compare, list[i], strlen(list[i]) - 2);
+        
+        compare[strlen(list[i]) - 1] = '\0';
+
+        if (strstr(item, compare) != NULL) {
+            free(compare);
+            return 0;
+        }
+        free(compare);
+    }
+    return 1;
+}
 /* This function reads a file line by line into an array of strings */
 int
 bot_strlist(char* file, char*** list)
