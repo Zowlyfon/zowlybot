@@ -176,7 +176,7 @@ main(int argc, char* argv[])
             msg_ptr--;
 
             if (strlen(line) > 3) {
-                if (strncmp(buf, "PING", 4) == 0) {
+                if (strncmp(line, "PING", 4) == 0) {
                     out[0] = 0;
                     pos = strstr(buf, " ") + 1;
                     sprintf(out, "PONG %s\r\n", pos);
@@ -187,7 +187,7 @@ main(int argc, char* argv[])
             }
 
             if (strlen(line) > 19) {
-                if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
+                if (strncmp(line, "ERROR :Closing link:", 20) == 0) {
                     close(sockfd);
                     bot_connect(argv[1], port, &sockfd);
                     bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
@@ -212,6 +212,7 @@ main(int argc, char* argv[])
             nbuftok = bot_token(" @!", buf2, &buf_tok);
 
             if (nbuftok < 6) {
+                printf("Not enough tokens");
                 continue;
             }
 
