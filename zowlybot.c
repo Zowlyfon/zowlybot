@@ -23,6 +23,7 @@
 
 #include <curl/curl.h>
 
+#include <fcntl.h>
 #include <netdb.h>
 #include <errno.h>
 #include <unistd.h>
@@ -58,6 +59,8 @@ int bot_liststr (char* item, char** list, int n);
 int bot_strlist (char* file, char*** list);
 int bot_fileapp (char* file, char* string);
 int bot_token   (char* del, char* string, char*** list);
+int bot_bufpush (char* input, char*** buffer, int* buf_ptr, int buf_size);
+int bot_buftok  (char* input, char*** buffer, int* buf_ptr, int buf_size);
 int bot_furl    (char* url, char** data);
 int bot_getpos  (char* buf, char** pos, char* callname, char* command);
 
@@ -110,12 +113,19 @@ main(int argc, char* argv[])
     char** buf_tok = NULL;
     int nbuftok = 0;
 
+    char** msg_buf;
+    msg_buf = (char**)malloc(sizeof(char*) * 4096);
+    int msg_buf_size = 4096;
+    int msg_ptr = 0;
+
     char isgd[] = "https://is.gd/create.php?format=simple&url=";
     char* buf2 = NULL;
     char* compare = NULL;
     char* data = NULL;
     char* url = NULL;
-    int i;
+    int i, beep;
+
+    char* line;
 
     char* endptr;
     uint64_t temp_llint;
@@ -135,24 +145,37 @@ main(int argc, char* argv[])
     bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
     sleep(2);
     bot_join(sockfd, channels, nchannels);
-
+    beep = 0;
     /* Program master loop */
     while (1) {
         sleep(1);
         buf[0] = 0;
 
-        if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1) {
+        if ((numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0)) == -1 &&
+                beep == 0) {
             perror("recv");
-            exit(1);
+            beep = 1;
         }
 
         if (numbytes > 0) {
             buf[numbytes] = '\0';
             printf("recv: %s\n", buf);
+            bot_buftok(buf, &msg_buf, &msg_ptr, msg_buf_size);
+            beep = 0;
+        }
 
-            /* Check for a PING */
+        if (msg_ptr > 0) {
 
-            if (strlen(buf) > 3) {
+            free(line);
+            line = (char*)malloc(sizeof(char) * (
+                strlen(msg_buf[msg_ptr]) + 1));
+            strncpy(line, msg_buf[msg_ptr], strlen(msg_buf[msg_ptr]));
+            line[strlen(msg_buf[msg_ptr])] = '\0';
+            printf("Buffer %d: %s\n", msg_ptr, msg_buf[msg_ptr]);
+            free(msg_buf[msg_ptr]);
+            msg_ptr--;
+
+            if (strlen(line) > 3) {
                 if (strncmp(buf, "PING", 4) == 0) {
                     out[0] = 0;
                     pos = strstr(buf, " ") + 1;
@@ -163,7 +186,7 @@ main(int argc, char* argv[])
                 }
             }
 
-            if (strlen(buf) > 19) {
+            if (strlen(line) > 19) {
                 if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
                     close(sockfd);
                     bot_connect(argv[1], port, &sockfd);
@@ -182,8 +205,9 @@ main(int argc, char* argv[])
             free(buf2);
             free(compare);
 
-            buf2 = (char*)malloc(sizeof(char) * (strlen(buf) + 1));
-            strcpy(buf2, buf);
+            buf2 = (char*)malloc(sizeof(char) * (strlen(line) + 1));
+            strcpy(buf2, line);
+            buf2[strlen(line)] = '\0';
 
             nbuftok = bot_token(" @!", buf2, &buf_tok);
 
@@ -214,14 +238,6 @@ main(int argc, char* argv[])
                 printf("%s op\n", buf_tok[2]);
             }
 
-            if (strncmp(buf, "ERROR :Closing link:", 20) == 0) {
-                close(sockfd);
-                bot_connect(argv[1], port, &sockfd);
-                bot_setup(sockfd, nick_cmd, user_cmd, auth_cmd);
-                bot_join(sockfd, channels, nchannels);
-                continue;
-            }
-
             if (bot_catch(buf_tok[5], call_name, "die") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 break;
@@ -230,7 +246,7 @@ main(int argc, char* argv[])
             if (bot_catch(buf_tok[5], call_name, "say") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
+                pos = strstr(line, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) + 
                     strlen("say") + 1;
                 
@@ -243,7 +259,7 @@ main(int argc, char* argv[])
             if (bot_catch(buf_tok[5], call_name, "command") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
+                pos = strstr(line, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) + 
                     strlen("command") + 1;
                 sprintf(out, "%s\r\n", pos);
@@ -280,7 +296,7 @@ main(int argc, char* argv[])
             if (bot_catch(buf_tok[5], call_name, "newmeme") == 0 &&
                     bot_listcmp(compare, ops, nops) == 0) {
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
+                pos = strstr(line, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
                 strlen("newmeme") + 1;
                 
@@ -325,7 +341,8 @@ main(int argc, char* argv[])
             }
 
             if (bot_catch(buf_tok[5], call_name, "op") == 0 &&
-                    strncmp(buf, owner_host, strlen(owner_host)) == 0) {
+                    strncmp(line, 
+                        owner_host, strlen(owner_host)) == 0) {
                 if (nbuftok < 7) {
                     continue;
                 }   
@@ -371,6 +388,7 @@ main(int argc, char* argv[])
                 }
 
                 bot_send(sockfd, out);
+                continue;
             }
 
             if (bot_catch(buf_tok[5], call_name, "owner") == 0) {
@@ -386,15 +404,15 @@ main(int argc, char* argv[])
                 }
                 
                 out[0] = 0;
-                pos = strstr(buf, "PRIVMSG");
+                pos = strstr(line, "PRIVMSG");
                 pos = strstr(pos, ":") + strlen(call_name) +
-                    strlen("url") + 2;
+                    strlen("url") + 1;
                 free(url);
                 free(data);
                 url = (char*)malloc(sizeof(char) * (
                     strlen(isgd) + (strlen(pos) - 2)));
-                strncpy(url, isgd, strlen(isgd) + 1);
-                strncat(url, pos, strlen(pos) - 2);
+                strncpy(url, isgd, strlen(isgd));
+                strncat(url, pos, strlen(pos));
                 printf("url: %s\n", url);
                 bot_furl(url, &data);
 
@@ -413,7 +431,7 @@ main(int argc, char* argv[])
             }
 
             if (strstr(buf, "Thailand") != NULL &&
-                    strstr(buf, "PRIVMSG") != NULL) {
+                    strstr(line, "PRIVMSG") != NULL) {
                 out[0] = 0;
                 sprintf(out, "PRIVMSG %s :%s\r\n", channel,
                     "s/Thailand/Bang Cock/");
@@ -423,7 +441,7 @@ main(int argc, char* argv[])
             
             if (bot_catch(buf_tok[5], call_name, "primality") == 0) {
                 if (nbuftok < 7) {
-
+                    continue;
                 }
 
                 out[0] = 0;
@@ -533,6 +551,7 @@ bot_connect(char* server, const char* port, int *sockfd)
     if (p == NULL) {
         fprintf(stderr, "client: failed to connect\n");
     }
+    fcntl(*sockfd, F_SETFL, O_NONBLOCK);
 
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr*)p->ai_addr),
         s, sizeof(s));
@@ -547,7 +566,8 @@ bot_connect(char* server, const char* port, int *sockfd)
 int
 bot_setup(int sockfd, char* nick_cmd, char* user_cmd, char* auth_cmd)
 {
-    int n, pinged;
+    int n = 0; 
+    int pinged = 0;
     char* pos;
     char out[MAXDATASIZE];
     char buf[MAXDATASIZE];
@@ -558,8 +578,9 @@ bot_setup(int sockfd, char* nick_cmd, char* user_cmd, char* auth_cmd)
         if ((n = bot_recv(sockfd, buf)) > 0) {
             buf[n] = '\0';
             printf("recv: %s\n", buf);
-            if (strncmp(buf, "PING", 4) == 0 && pinged == 0) {
-                pos = strstr(buf, " ") + 1;
+            if (strstr(buf, "PING") != NULL && pinged == 0) {
+                pos = strstr(buf, "PING");
+                pos = strstr(pos, " ") + 1;
                 out[0] = 0;
                 sprintf(out, "PONG %s\r\n", pos);
                 bot_send(sockfd, out);
@@ -612,7 +633,7 @@ bot_recv(int sockfd, char* buf)
     int n;
     if ((n = recv(sockfd, buf, MAXDATASIZE, 0)) == -1) {
         perror("recv");
-        exit(1);
+        sleep(1);
     }
     return n;
 }
@@ -649,6 +670,7 @@ bot_listcmp(char* item, char** list, int n)
     return 1;
 }
 
+/* This function is used to find a string inside a list of strings */
 int
 bot_liststr(char* item, char** list, int n)
 {
@@ -749,6 +771,47 @@ bot_token(char* del, char* string, char*** list)
     free(token);
     free(string2);
     return i;
+}
+
+int
+bot_bufpush(char* input, char*** buf, int* buf_ptr, int buf_size)
+{
+
+    if (*buf_ptr >= (buf_size - 1)) {
+        perror("Buffer is full");
+        return 1;
+    } else {
+        (*buf_ptr)++;
+        (*buf)[*buf_ptr] = (char*)malloc(sizeof(char) * (
+            strlen(input) + 1));
+        strncpy((*buf)[*buf_ptr], input, strlen(input));
+        (*buf)[*buf_ptr][strlen(input)] = '\0';
+        printf("buffer app: %s at %d\n", (*buf)[*buf_ptr], *buf_ptr);
+    }
+    return 0;
+}
+
+int
+bot_buftok(char* input, char*** buf, int* buf_ptr, int buf_size)
+{
+    char* pos;
+    size_t line_len;
+    char* line;
+
+    do {
+        if ((pos = strstr(input, "\r\n")) != NULL) {
+            line_len = strlen(input) - strlen(pos);
+            line = (char*)malloc(sizeof(char) * (line_len + 1));
+            strncpy(line, input, line_len);
+            bot_bufpush(line, buf, buf_ptr, buf_size);
+            input = pos + 2;
+            free(line);
+        } else {
+            break;
+        }
+    } while (strlen(input) != strlen(pos));
+    return 0;
+
 }
 
 int
